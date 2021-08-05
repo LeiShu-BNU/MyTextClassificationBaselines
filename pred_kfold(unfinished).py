@@ -89,11 +89,26 @@ def create_data_loader(df,tokenizer,max_len,batch_size):
     return DataLoader(
         ds,
         batch_size=batch_size,
-#         num_workers=4 # windows多线程
+        num_workers=4 # windows多线程
     )
 
-test_data_loader = create_data_loader(test, tokenizer, MAX_LEN, BATCH_SIZE)
 
+def create_pred_data_loader(df,tokenizer,max_len,batch_size):
+    ds=TitleDataset(
+        texts=df['text'].values,
+        tokenizer=tokenizer,
+        max_len=max_len
+    )
+
+    return DataLoader(
+        ds,
+        batch_size=batch_size,
+        num_workers=4 # windows多线程
+    )
+
+
+test_data_loader = create_data_loader(test, tokenizer, MAX_LEN, BATCH_SIZE)
+pred_data_loader = create_pred_data_loader(pred, tokenizer, MAX_LEN, BATCH_SIZE)
 logging.set_verbosity_info()
 
 #Load the pretrained model
@@ -126,53 +141,57 @@ for i in range(k):
     model_names['model_%s' % i].load_state_dict(torch.load('the_%s_fold_best_state.bin'%i))
 #加载了model0,model1,...modelk-1
 
-def get_predictions(model, data_loader):#输出值用于返回混淆矩阵
+def get_probs(model, pred_data_loader):#输出值用于返回混淆矩阵
     model = model.eval()
 
     texts = []
-    predictions = []
     prediction_probs = []
-    real_values = []
 
     with torch.no_grad():
         for d in data_loader:
             texts = d["texts"]
             input_ids = d["input_ids"].to(device)
             attention_mask = d["attention_mask"].to(device)
-            targets = d["labels"].to(device)
 
             outputs = model(
                 input_ids=input_ids,
                 attention_mask=attention_mask
             )
             _, preds = torch.max(outputs, dim=1)
-
             probs = F.softmax(outputs, dim=1)
 
             texts.extend(texts)
-            predictions.extend(preds)
             prediction_probs.extend(probs)
-            real_values.extend(targets)
 
-    predictions = torch.stack(predictions).cpu().numpy()
-    predictions = predictions.tolist()
     prediction_probs = torch.stack(prediction_probs).cpu()
     prediction_probs = prediction_probs.tolist()
-    real_values = torch.stack(real_values).cpu()
-    real_values = real_values.tolist()
-    right = list(map(lambda x,y : x==y ,predictions,real_values))
     
-    return texts, predictions, prediction_probs, real_values
+    return texts, prediction_probs #what shape??嵌套列表？
 
 
-y_texts, y_pred, y_pred_probs, y_test = get_predictions(
-  model,
-  test_data_loader
-)
+texts,prediction_probs = get_probs(model_0, pred_data_loader)
 
-def data_pred(res_data,model):
+added_probs = [[0 for i in range(len(class_names))] for _ in range(len(texts))]
+prediction_probs = []
+
+for i in range(k):
+    model_names['model_%s' % i]
+    texts,prediction_probs = get_probs(model, pred_data_loader)
+    for i in range(len(prediction_probs)):
+        each_list = prediction_probs[i]
+        for idx in range(k):
+            added_probs[i][k] += each_list[k]
+final_preds = []
+
+for small_list in added_probs:
+    pred_class_id = small_list.index(max(small_list))
+    final_preds.append(pred_class_id)
+
+
+
+def data_pred(pred_data,model):
     texts, id_ids, y_pred_ids = [], [], []
-    for index, row in res_data.iterrows():
+    for index, row in pred_data.iterrows():
         id = row['id']
         text = row['text']
         encoded_text = tokenizer.encode_plus(
