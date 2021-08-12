@@ -109,9 +109,7 @@ def create_pred_data_loader(df,tokenizer,max_len,batch_size):
 
 test_data_loader = create_data_loader(test, tokenizer, MAX_LEN, BATCH_SIZE)
 pred_data_loader = create_pred_data_loader(pred, tokenizer, MAX_LEN, BATCH_SIZE)
-logging.set_verbosity_info()
 
-#Load the pretrained model
 
 
 
@@ -161,7 +159,7 @@ def get_probs(model, pred_data_loader):#输出值用于返回混淆矩阵
             probs = F.softmax(outputs, dim=1)
 
             texts.extend(texts)
-            prediction_probs.extend(probs)
+            prediction_probs.append(probs)
 
     prediction_probs = torch.stack(prediction_probs).cpu()
     prediction_probs = prediction_probs.tolist()
