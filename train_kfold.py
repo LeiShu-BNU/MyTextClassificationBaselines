@@ -20,14 +20,9 @@ import torch.nn.functional as F
 # 常用包
 import numpy as np
 import pandas as pd
-# import seaborn as sns
-# from pylab import rcParams
-# import matplotlib.pyplot as plt
-# from matplotlib import rc
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, classification_report
 from collections import defaultdict
-#from textwrap import wrap
 from sklearn.model_selection import KFold
 from sklearn.metrics import accuracy_score
 
@@ -40,13 +35,14 @@ from transformers.utils import logging
 RANDOM_SEED = 42
 np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
-
+LR=2e-5
 MAX_LEN = 126
 device_ids=[0,3]
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.cuda.is_available()
 BATCH_SIZE = 32
-class_names=[0,1]
+class_names=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+
 
 # ## 2 加载数据
 
@@ -61,11 +57,9 @@ print(train.shape[0]-train.count())
 # 填充缺失值
 train['text'] = train['text'].fillna('')
 
-
 # ### 4 将文本映射为id表示
 PRE_TRAINED_MODEL_NAME = 'guwenbert-base'#/home/sl/guwenbert-base
 tokenizer = BertTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
-#Load the pretrained model
 
 
 # ## 5 构建数据集
@@ -109,7 +103,7 @@ class TitleDataset(Dataset):
 # ### 5.2 划分数据集并创建生成器
 k = 5
 kfold = KFold(n_splits=k, shuffle=True, random_state=1)
-split = kfold.split(train)#长度为k,用for循环，每一个元素里面是train,test
+split = kfold.split(train) #长度为k,用for循环，每一个元素里面是train,test
 
 
 def create_data_loader(df,tokenizer,max_len,batch_size):
@@ -166,10 +160,8 @@ def train_epoch(model, data_loader, loss_fn, optimizer, device, scheduler, n_exa
     return correct_predictions.double() / n_examples, np.mean(losses)
 
 
-
 def eval_model(model, data_loader, loss_fn, device, n_examples):
-    model = model.eval() # 验证预测模式
-
+    model = model.eval() # 不启用 BatchNormalization 和 Dropout
     losses = []
     correct_predictions = 0
 
@@ -191,117 +183,111 @@ def eval_model(model, data_loader, loss_fn, device, n_examples):
             losses.append(loss.item())
 
     return correct_predictions.double() / n_examples, np.mean(losses)
-def get_predictions(model, data_loader):
-    model = model.eval()
 
-    texts = []
-    predictions = []
-    prediction_probs = []
-    real_values = []
+# def get_predictions(model, data_loader):
+#     model = model.eval()
 
-    with torch.no_grad():
-        for d in data_loader:
-            texts = d["texts"]
-            input_ids = d["input_ids"].to(device)
-            attention_mask = d["attention_mask"].to(device)
-            targets = d["labels"].to(device)
+#     texts = []
+#     predictions = []
+#     prediction_probs = []
+#     real_values = []
 
-            outputs = model(
-                input_ids=input_ids,
-                attention_mask=attention_mask
-            )
-            _, preds = torch.max(outputs, dim=1)
+#     with torch.no_grad():
+#         for d in data_loader:
+#             texts = d["texts"]
+#             input_ids = d["input_ids"].to(device)
+#             attention_mask = d["attention_mask"].to(device)
+#             targets = d["labels"].to(device)
 
-            probs = F.softmax(outputs, dim=1)
+#             outputs = model(
+#                 input_ids=input_ids,
+#                 attention_mask=attention_mask
+#             )
+#             _, preds = torch.max(outputs, dim=1)
 
-            texts.extend(texts)
-            predictions.extend(preds)
-            prediction_probs.extend(probs)
-            real_values.extend(targets)
+#             probs = F.softmax(outputs, dim=1)
 
-    predictions = torch.stack(predictions).cpu().numpy()
-    predictions = predictions.tolist()
-    prediction_probs = torch.stack(prediction_probs).cpu()
-    prediction_probs = prediction_probs.tolist()
-    real_values = torch.stack(real_values).cpu()
-    real_values = real_values.tolist()
-    right = list(map(lambda x,y : x==y ,predictions,real_values))
+#             texts.extend(texts)
+#             predictions.extend(preds)
+#             prediction_probs.extend(probs)
+#             real_values.extend(targets)
+
+#     predictions = torch.stack(predictions).cpu().numpy()
+#     predictions = predictions.tolist()
+#     prediction_probs = torch.stack(prediction_probs).cpu()
+#     prediction_probs = prediction_probs.tolist()
+#     real_values = torch.stack(real_values).cpu()
+#     real_values = real_values.tolist()
+#     right = list(map(lambda x,y : x==y ,predictions,real_values))
     
-    return texts, predictions, prediction_probs, real_values
+#     return texts, predictions, prediction_probs, real_values
 
 
 
-ks = 0
-for df_train, df_test in split: #每一折交叉验证
-	#最后ks+=1
-	train_data_loader = create_data_loader(df_train, tokenizer, MAX_LEN, BATCH_SIZE)
-	test_data_loader = create_data_loader(df_test, tokenizer, MAX_LEN, BATCH_SIZE)
 
-	model = TitleClassifier(len(class_names))
+for ks, (train_ids, test_ids) in enumerate(split):  #每一折交叉验证
+    ks = ks+1 #让fold索引从1开始
+    train_data_loader = create_data_loader(train.loc[train_ids], tokenizer, MAX_LEN, BATCH_SIZE)
+    test_data_loader = create_data_loader(train.loc[test_ids], tokenizer, MAX_LEN, BATCH_SIZE)
+
+    model = TitleClassifier(len(class_names))
     model = torch.nn.DataParallel(model,device_ids=device_ids)
     model = model.cuda(device = device_ids[0])
 
-	# ## 7 模型训练
+    # ## 7 模型训练
 
-	EPOCHS = 5 # 训练轮数
+    EPOCHS = 5 # 训练轮数
 
-	optimizer = AdamW(model.parameters(), lr=2e-5, correct_bias=False)
-	total_steps = len(train_data_loader) * EPOCHS
+    optimizer = AdamW(model.parameters(), lr=LR, correct_bias=False)
+    total_steps = len(train_data_loader) * EPOCHS
 
-	scheduler = get_linear_schedule_with_warmup(
-	  optimizer,
-	  num_warmup_steps=total_steps//10,
-	  num_training_steps=total_steps
-	)
+    scheduler = get_linear_schedule_with_warmup(
+      optimizer,
+      num_warmup_steps=total_steps//10,
+      num_training_steps=total_steps
+    )
 
-	loss_fn = nn.CrossEntropyLoss().to(device)
-
-
-	history = defaultdict(list) # 记录loss和acc
-	best_accuracy = 0
-
-	for epoch in range(EPOCHS):
-
-	    print(f'Epoch {epoch + 1}/{EPOCHS}')
-	    print('-' * 10)
-
-	    train_acc, train_loss = train_epoch(
-	        model,
-	        train_data_loader,
-	        loss_fn,
-	        optimizer,
-	        device,
-	        scheduler,
-	        len(df_train)
-	    )
-
-	    print(f'Train loss {train_loss} accuracy {train_acc}')
-
-	    test_acc, test_loss = eval_model(
-	        model,
-	        test_data_loader,
-	        loss_fn,
-	        device,
-	        len(df_test)
-	    )
-
-	    
-	    print("the %s fold test accuracy:"%str(ks),test_acc)
-
-	    history['train_acc'].append(train_acc)
-	    history['train_loss'].append(train_loss)
-	    history['test_acc'].append(test_acc)
-	    
-
-	    if test_acc > best_accuracy:
-	        torch.save(model.state_dict(), 'the_%s_fold_best_state.bin'%str(ks))
-            torch.save(model, 'the_%s_fold_best_model.bin'%str(ks))
-	        best_accuracy = test_acc
-	        print("best model saved!!!!")
-	ks += 1
+    loss_fn = nn.CrossEntropyLoss().to(device)
 
 
+    history = defaultdict(list) # 记录loss和acc
+    best_accuracy = 0
 
+    for epoch in range(EPOCHS):
 
+        print(f'Epoch {epoch + 1}/{EPOCHS}')
+        print('-' * 10)
 
+        train_acc, train_loss = train_epoch(
+            model,
+            train_data_loader,
+            loss_fn,
+            optimizer,
+            device,
+            scheduler,
+            len(train_ids)
+        )
 
+        print(f'Train loss {train_loss} accuracy {train_acc}')
+
+        test_acc, test_loss = eval_model(
+            model,
+            test_data_loader,
+            loss_fn,
+            device,
+            len(test_ids)
+        )
+
+        
+        print("the %s fold test accuracy:"%str(ks),test_acc)
+
+        history['train_acc'].append(train_acc)
+        history['train_loss'].append(train_loss)
+        history['test_acc'].append(test_acc)
+        
+
+        if test_acc > best_accuracy:
+            torch.save(model.state_dict(), 'the_%s_fold_best_state.bin'%str(ks))
+                torch.save(model, 'the_%s_fold_best_model.bin'%str(ks))
+            best_accuracy = test_acc
+            print("best model saved!!!!")
