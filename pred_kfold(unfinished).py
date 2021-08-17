@@ -32,7 +32,7 @@ k = 5
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(torch.cuda.is_available())
 
-test = pd.read_csv('data/test_0721_trad.csv',encoding = "utf-8")
+test = pd.read_csv('data/test_0721.csv',encoding = "utf-8")
 test['text']=test['text'].fillna('')
 
 PRE_TRAINED_MODEL_NAME = 'sikubert'
@@ -64,7 +64,7 @@ class TitleDataset(Dataset):
             add_special_tokens=True,
             max_length=self.max_len,
             return_token_type_ids=True,
-            pad_to_max_length=True,
+            padding='max_length', 
             return_attention_mask=True,
             truncation=True,
             return_tensors='pt',
@@ -110,7 +110,6 @@ def create_pred_data_loader(df,tokenizer,max_len,batch_size):
 
 test_data_loader = create_data_loader(test, tokenizer, MAX_LEN, BATCH_SIZE)
 #pred_data_loader = create_pred_data_loader(pred, tokenizer, MAX_LEN, BATCH_SIZE)
-
 
 
 
@@ -166,62 +165,27 @@ def get_probs(model, pred_data_loader):#输出值用于返回混淆矩阵
     
     return texts, prediction_probs 
 
+all_test_size = len(test)
+avg_prob = [np.zeros(2, dtype = float) for i in range(all_test_size)]
 
-texts,prediction_probs = get_probs(model_0, pred_data_loader)
-print("prediction_probs",prediction_probs)
+for model in loaded_models:
+    texts,prediction_probs = get_probs(model, test_data_loader)
+    for i in range(all_test_size):
+        avg_prob[i] += prediction_probs[i]/k
+      
+y_pred = [int(round(i[1])) for i in avg_prob]
+print(y_pred)
+print(classification_report(y_test, y_pred, target_names = [str(label) for label in class_names]))                                                                                                                
 
-# added_probs = [[0 for i in range(len(class_names))] for _ in range(len(texts))]
-# prediction_probs = []
-
-# for model in loaded_models
-#     texts,prediction_probs = get_probs(model, pred_data_loader)
-#     for i in range(len(prediction_probs)):
-#         each_list = prediction_probs[i]
-#         for idx in range(k):
-#             added_probs[i][k] += each_list[k]
-# final_preds = []
-
-# for small_list in added_probs:
-#     pred_class_id = small_list.index(max(small_list))
-#     final_preds.append(pred_class_id)
-
-
-
-# def data_pred(pred_data,model):
-#     texts, id_ids, y_pred_ids = [], [], []
-#     for index, row in pred_data.iterrows():
-#         id = row['id']
-#         text = row['text']
-#         encoded_text = tokenizer.encode_plus(
-#               text,
-#               max_length=MAX_LEN,
-#               add_special_tokens=True,
-#               return_token_type_ids=False,
-#               pad_to_max_length=True,
-#               return_attention_mask=True,
-#               return_tensors='pt',
-#             )
-#         input_ids = encoded_text['input_ids'].to(device)
-#         attention_mask = encoded_text['attention_mask'].to(device)
-
-#         output = model(input_ids, attention_mask)
-#         _, prediction = torch.max(output, dim=1)
-#         id_ids.append(id)
-#         y_pred_ids.append(class_names[prediction])
-#         # print(f'Sample text: {text}')
-# #         print(f' label  : {class_names[prediction]}')
-#         texts.append(text)
-#     return texts, id_ids, y_pred_ids
-
-# res_data = test
-# texts, id_ids, y_pred_ids = data_pred(res_data,model)
-# df_save = pd.DataFrame()
-# df_save['id'] = id_ids
-# df_save['label'] = y_pred_ids
-
+y_test = test["labels"]
+id_ids = test["ids"]
+df_save = pd.DataFrame()
+df_save['id'] = id_ids
+df_save['label'] = y_pred
+df_save.to_csv('result_fold5.csv',index=False)
 # with open("res.txt","w",encoding="utf-8")as rf:
 #     i = 0
 #     while i < len(texts):
 #         rf.write(texts[i] + "," +str(id_ids[i])+","+ str(y_pred_ids[i]) + "\n")
 #         i += 1
-# df_save.to_csv('result_bertlargewwm_epoch5.csv',index=False)
+#
