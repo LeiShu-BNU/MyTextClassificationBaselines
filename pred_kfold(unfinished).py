@@ -32,14 +32,14 @@ k = 5
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(torch.cuda.is_available())
 
-test = pd.read_csv('data/test.csv',encoding = "utf-8")
+test = pd.read_csv('data/test_0721_trad.csv',encoding = "utf-8")
 test['text']=test['text'].fillna('')
 
-PRE_TRAINED_MODEL_NAME = 'guwenbert-base'#/home/sl/guwenbert-base
+PRE_TRAINED_MODEL_NAME = 'sikubert'
 tokenizer = BertTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
 
 
-MAX_LEN = 126
+MAX_LEN = 200
 class_names=[0,1]
 BATCH_SIZE = 32
 
@@ -66,6 +66,7 @@ class TitleDataset(Dataset):
             return_token_type_ids=True,
             pad_to_max_length=True,
             return_attention_mask=True,
+            truncation=True,
             return_tensors='pt',
         )
         
@@ -108,7 +109,7 @@ def create_pred_data_loader(df,tokenizer,max_len,batch_size):
 
 
 test_data_loader = create_data_loader(test, tokenizer, MAX_LEN, BATCH_SIZE)
-pred_data_loader = create_pred_data_loader(pred, tokenizer, MAX_LEN, BATCH_SIZE)
+#pred_data_loader = create_pred_data_loader(pred, tokenizer, MAX_LEN, BATCH_SIZE)
 
 
 
@@ -130,13 +131,14 @@ class TitleClassifier(nn.Module):
 
 # load the fine-tuned model
 
-
+loaded_models = []
 model_names = locals()
 for i in range(k):
     model_names['model_%s' % i] = TitleClassifier(len(class_names))
     model_names['model_%s' % i] = torch.nn.DataParallel(model_names['model_%s' % i])   
     model_names['model_%s' % i] = model_names['model_%s' %i].cuda(device = device_ids[0])
     model_names['model_%s' % i].load_state_dict(torch.load('the_%s_fold_best_state.bin'%i))
+    loaded_models.append(model_names['model_%s' % i])
 #加载了model0,model1,...modelk-1
 
 def get_probs(model, pred_data_loader):#输出值用于返回混淆矩阵
@@ -159,59 +161,57 @@ def get_probs(model, pred_data_loader):#输出值用于返回混淆矩阵
             probs = F.softmax(outputs, dim=1)
 
             texts.extend(texts)
-            prediction_probs.append(probs)
+            prediction_probs.extend([line for line in probs.cpu().numpy()])
 
-    prediction_probs = torch.stack(prediction_probs).cpu()
-    prediction_probs = prediction_probs.tolist()
     
-    return texts, prediction_probs #what shape??嵌套列表？
+    return texts, prediction_probs 
 
 
 texts,prediction_probs = get_probs(model_0, pred_data_loader)
+print("prediction_probs",prediction_probs)
 
-added_probs = [[0 for i in range(len(class_names))] for _ in range(len(texts))]
-prediction_probs = []
+# added_probs = [[0 for i in range(len(class_names))] for _ in range(len(texts))]
+# prediction_probs = []
 
-for i in range(k):
-    model_names['model_%s' % i]
-    texts,prediction_probs = get_probs(model, pred_data_loader)
-    for i in range(len(prediction_probs)):
-        each_list = prediction_probs[i]
-        for idx in range(k):
-            added_probs[i][k] += each_list[k]
-final_preds = []
+# for model in loaded_models
+#     texts,prediction_probs = get_probs(model, pred_data_loader)
+#     for i in range(len(prediction_probs)):
+#         each_list = prediction_probs[i]
+#         for idx in range(k):
+#             added_probs[i][k] += each_list[k]
+# final_preds = []
 
-for small_list in added_probs:
-    pred_class_id = small_list.index(max(small_list))
-    final_preds.append(pred_class_id)
-
+# for small_list in added_probs:
+#     pred_class_id = small_list.index(max(small_list))
+#     final_preds.append(pred_class_id)
 
 
-def data_pred(pred_data,model):
-    texts, id_ids, y_pred_ids = [], [], []
-    for index, row in pred_data.iterrows():
-        id = row['id']
-        text = row['text']
-        encoded_text = tokenizer.encode_plus(
-              text,
-              max_length=MAX_LEN,
-              add_special_tokens=True,
-              return_token_type_ids=False,
-              pad_to_max_length=True,
-              return_attention_mask=True,
-              return_tensors='pt',
-            )
-        input_ids = encoded_text['input_ids'].to(device)
-        attention_mask = encoded_text['attention_mask'].to(device)
 
-        output = model(input_ids, attention_mask)
-        _, prediction = torch.max(output, dim=1)
-        id_ids.append(id)
-        y_pred_ids.append(class_names[prediction])
-        # print(f'Sample text: {text}')
-#         print(f' label  : {class_names[prediction]}')
-        texts.append(text)
-    return texts, id_ids, y_pred_ids
+# def data_pred(pred_data,model):
+#     texts, id_ids, y_pred_ids = [], [], []
+#     for index, row in pred_data.iterrows():
+#         id = row['id']
+#         text = row['text']
+#         encoded_text = tokenizer.encode_plus(
+#               text,
+#               max_length=MAX_LEN,
+#               add_special_tokens=True,
+#               return_token_type_ids=False,
+#               pad_to_max_length=True,
+#               return_attention_mask=True,
+#               return_tensors='pt',
+#             )
+#         input_ids = encoded_text['input_ids'].to(device)
+#         attention_mask = encoded_text['attention_mask'].to(device)
+
+#         output = model(input_ids, attention_mask)
+#         _, prediction = torch.max(output, dim=1)
+#         id_ids.append(id)
+#         y_pred_ids.append(class_names[prediction])
+#         # print(f'Sample text: {text}')
+# #         print(f' label  : {class_names[prediction]}')
+#         texts.append(text)
+#     return texts, id_ids, y_pred_ids
 
 # res_data = test
 # texts, id_ids, y_pred_ids = data_pred(res_data,model)
