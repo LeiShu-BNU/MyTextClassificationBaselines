@@ -29,6 +29,7 @@ RANDOM_SEED = 42
 np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 k = 5
+device_ids=[0,1]
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(torch.cuda.is_available())
 
@@ -140,7 +141,7 @@ for i in range(k):
     loaded_models.append(model_names['model_%s' % i])
 #加载了model0,model1,...modelk-1
 
-def get_probs(model, pred_data_loader):#输出值用于返回混淆矩阵
+def get_probs(model, data_loader):#输出值用于返回混淆矩阵
     model = model.eval()
 
     texts = []
