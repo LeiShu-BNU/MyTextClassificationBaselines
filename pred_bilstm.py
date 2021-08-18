@@ -62,6 +62,13 @@ bertlstm_model = model.cuda()
 bertlstm_model.load_state_dict(torch.load('best_state_bertlstm0812.bin'))
 
 
+small_batches =[]
+sent_size = len(sents)
+step = 64
+for i in range(0,sent_size,step):
+    small_batches.append(sents[i:i+step])
+    
+
 def pred_lstm_sent_list(model, sents):
 
     model = model.eval()
@@ -78,7 +85,10 @@ def pred_lstm_sent_list(model, sents):
         pred_list.extend(preds) 
     pred_list = torch.stack(pred_list).cpu()
     return pred_list
-y_pred = pred_lstm_sent_list(bertlstm_model, sents)  
+
+y_pred = []
+for sents in small_batches:
+    y_pred.extend(pred_lstm_sent_list(bertlstm_model, sents))
 print(classification_report(y_test, y_pred, target_names = [str(label) for label in class_names]))
         
 
