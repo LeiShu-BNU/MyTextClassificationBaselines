@@ -287,15 +287,15 @@ loaded_models.append(bertlstm_model)
 all_test_size = len(test)
 avg_prob = [np.zeros(2, dtype = float) for i in range(all_test_size)]
 k = len(loaded_models)
-for model in loaded_models:
-    if "lstm" not in model:
-        texts,prediction_probs = get_probs(model, test_data_loader)
+for i, model in loaded_models:
+    if i < k-1:
+        texts,prediction_probs = get_bert_probs(model, test_data_loader)
         for i in range(all_test_size):
             avg_prob[i] += prediction_probs[i]/k
     else:
         prediction_probs = []
         for sents in small_batches:
-            prediction_probs.extend(pred_lstm_sent_list(bertlstm_model, sents))
+            prediction_probs.extend(get_lstm_probs(model, sents))
         for i in range(all_test_size):
             avg_prob[i] += prediction_probs[i]/k
 
