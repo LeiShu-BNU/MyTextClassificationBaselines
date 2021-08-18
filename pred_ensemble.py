@@ -42,7 +42,9 @@ tokenizer = BertTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
 MAX_LEN = 200
 class_names=[0,1]
 BATCH_SIZE = 32
+USE_CUDA = torch.cuda.is_available()
 
+    
 class TitleDataset(Dataset):
     def __init__(self,texts,labels,tokenizer,max_len):
         self.texts=texts
